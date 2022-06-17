@@ -20,8 +20,12 @@ import PIL
 from PIL import ImageDraw
 from PIL import Image
 
-from .segmentation.annotations_to_segmentations import label_to_colors
-from .segmentation.image_segmentation import segmentation
+# from .segmentation.annotations_to_segmentations import label_to_colors
+# from .segmentation.image_segmentation import segmentation
+
+from doodler_engine.annotations_to_segmentations import segmentation, check_sanity
+from doodler_engine.annotations_to_segmentations import label_to_colors
+
 
 logger = logging.getLogger(__name__)
 
@@ -407,7 +411,8 @@ class ComputationSettings(pn.viewable.Viewer):
 
     crf_downsample_factor = param.Integer(default=2, bounds=(1, 6), label="CRF downsample factor", precedence=1)
 
-    gt_prob = param.Number(default=0.9, bounds=(0.5, 0.99), step=0.1, label="Probability of doodle", precedence=1)
+    ## no need for this paramater with doodler-engine
+    # gt_prob = param.Number(default=0.9, bounds=(0.5, 0.99), step=0.1, label="Probability of doodle", precedence=1)
 
     # Classifier settings
 
@@ -542,9 +547,9 @@ class Application(param.Parameterized):
         if not doodles:
             self.info.update('Draw doodles before trying to run the algorithm.', 'danger')
             return
-        if not self.doodle_drawer.within(self.input_image.img_bounds):
-            self.info.update('At least a doodle was found to be drawn outside of the image bounds.', 'danger')
-            return
+        # if not self.doodle_drawer.within(self.input_image.img_bounds):
+        #     self.info.update('At least a doodle was found to be drawn outside of the image bounds.', 'danger')
+        #     return
         if not self.input_image.location:
             self.info.update('Input image not loaded.', 'danger')
             return
@@ -564,18 +569,51 @@ class Application(param.Parameterized):
 
             # Long computation...
             self.info.add('Core segmentation computation...')
+            ## DB: this function now takes new arguments, and a different order
+            ## **self.settings.as_dict() may be considered good practice, but it obscures inputs 
+            ## and makes things harder for me to debug. I've rather just see the inputs spelled out
+            ## in the correct order so I know for sure. 
+
+            # self._segmentation = segmentation(
+            #     img=self.input_image.array,
+            #     mask=self._mask_doodles,
+            #     **self.settings.as_dict(),
+            # )
             self._segmentation = segmentation(
                 img=self.input_image.array,
                 mask=self._mask_doodles,
-                **self.settings.as_dict(),
+                crf_theta_slider_value=self.settings.as_dict()['crf_theta'],
+                crf_mu_slider_value = self.settings.as_dict()['crf_mu'],
+                rf_downsample_value = self.settings.as_dict()['rf_downsample_value'],
+                crf_downsample_factor = self.settings.as_dict()['crf_downsample_factor'],
+                n_sigmas = self.settings.as_dict()['n_sigmas'],
+                multichannel = self.settings.as_dict()['multichannel'],
+                intensity = self.settings.as_dict()['intensity'],
+                edges = self.settings.as_dict()['edges'],
+                texture = self.settings.as_dict()['texture'],
+                sigma_min = self.settings.as_dict()['sigma_min'],
+                sigma_max = self.settings.as_dict()['sigma_max']
             )
 
+            ## new function of the doodler-engine
+            self._segmentation = check_sanity(self._segmentation,self._mask_doodles)
+            self._segmentation = np.flipud(self._segmentation)
+
             self.info.add('Colorizing the segmentation...')
+            ## DB: New version requires "alpha" and "do_alpha"
+            # self._segmentation_color = label_to_colors(
+            #     self._segmentation,
+            #     self.input_image.array[:, :, 0] == 0,
+            #     colormap=self.doodle_drawer.colormap,
+            #     color_class_offset=-1,
+            # )
             self._segmentation_color = label_to_colors(
                 self._segmentation,
                 self.input_image.array[:, :, 0] == 0,
                 colormap=self.doodle_drawer.colormap,
                 color_class_offset=-1,
+                alpha=128,
+                do_alpha=True
             )
 
             self.info.add('Rendering the results...')
