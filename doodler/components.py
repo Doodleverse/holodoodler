@@ -344,7 +344,13 @@ class InputImage(param.Parameterized):
         self.array = array = self.read_from_fs(self.location)
         # this is where we want to split the image array used for doodling
         # and the n-band array for segmentation
+        print("\n array.shape ", array.shape)
+        if np.ndim(array) <=2:
+            print("np.ndim(array)", np.ndim(array))          
+            array = np.dstack((array,array,array))
+        
         h, w, nbands = array.shape
+
         if nbands > 3:
             img = array[:, :, 0:3].copy()
         else:
@@ -607,9 +613,14 @@ class Application(param.Parameterized):
             #     colormap=self.doodle_drawer.colormap,
             #     color_class_offset=-1,
             # )
+            if np.ndim(self.input_image.array) <= 2:
+                mask=self.input_image.array[:, :] == 0
+            else:
+                mask=self.input_image.array[:, :, 0] == 0
+
             self._segmentation_color = label_to_colors(
                 self._segmentation,
-                self.input_image.array[:, :, 0] == 0,
+                mask,
                 colormap=self.doodle_drawer.colormap,
                 color_class_offset=-1,
                 alpha=128,
