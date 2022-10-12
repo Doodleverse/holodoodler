@@ -26,7 +26,6 @@ from PIL import Image
 from doodler_engine.annotations_to_segmentations import segmentation, check_sanity
 from doodler_engine.annotations_to_segmentations import label_to_colors
 
-
 logger = logging.getLogger(__name__)
 
 # Load the bokeh extension for holoviews and panel
@@ -331,7 +330,7 @@ class InputImage(param.Parameterized):
             if img.mode == 'CMYK':
                 img = img.convert('RGB')
         elif ext.lower() in ('.tif', '.tiff'):
-            img = tifffile.imread(path)
+            img = tifffile.imread(str(path))
         arr = np.array(img)
         # array is (nrows, ncols, nbands)
         return arr
@@ -342,22 +341,28 @@ class InputImage(param.Parameterized):
             self._plot = self._pane.object = hv.RGB(data=[])
             return
         self.array = array = self.read_from_fs(self.location)
+        
         # this is where we want to split the image array used for doodling
         # and the n-band array for segmentation
-        print("\n array.shape ", array.shape)
         if np.ndim(array) <=2:
-            print("np.ndim(array)", np.ndim(array))          
             array = np.dstack((array,array,array))
         
         h, w, nbands = array.shape
-
         if nbands > 3:
             img = array[:, :, 0:3].copy()
         else:
             img = array.copy()
 
-        self.img_bounds = (0, 0, w, h)
+        # Make sure image array is within the range
+        # [0, 255] for integers or [0, 1] for floats.
+        if np.issubdtype(img.dtype, np.integer) and not (np.all(img >= 0) and np.all(img <= 255)):
+            img = (img / np.amax(img) * 255).astype(np.uint8)
+        elif np.issubdtype(img.dtype, np.floating) and not (np.all(img >= 0) and np.all(img <= 1)):
+            img = img / np.amax(img)
+            img[img == float("-inf")] = 0
+
         # Preserve the aspect ratio
+        self.img_bounds = (0, 0, w, h)
         self._plot = self._pane.object = hv.RGB(
             img, bounds=self.img_bounds
         ).opts(aspect=(w / h))

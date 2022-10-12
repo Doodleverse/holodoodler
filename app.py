@@ -57,7 +57,7 @@ CLASS_COLOR_MAPPING = dict(config['classes'])
 
 # Instantiate  the main components required by the Application
 doodle_drawer = DoodleDrawer(class_color_mapping=CLASS_COLOR_MAPPING, class_toggle_group_type=ClassToggleGroup)
-input_image = InputImage.from_folder('examples/images')
+input_image = InputImage.from_folder('examples/images/Klamath river mouth')
 settings = ComputationSettings(name='Post-processing/Classifier settings')
 info = Info()
 
