@@ -657,12 +657,17 @@ class Application(param.Parameterized):
         res_dir = root_res_dir / now
         res_dir.mkdir()
 
-        input_img_file = res_dir / 'input.jpeg'
+        _, ext = os.path.splitext(self.input_image.location)
+        input_file_name = 'input' + ext.lower()
+        input_img_file = res_dir / input_file_name
         imageio.imwrite(input_img_file, self.input_image.array)
-        doodles_file = res_dir / 'doodles.jpeg'
+        doodles_file = res_dir / 'doodles.png'
         imageio.imwrite(doodles_file, self._mask_doodles)
         col_seg_file = res_dir / 'colorized_segmentation.png'
         imageio.imwrite(col_seg_file, self._segmentation_color)
+        input_with_seg_file_name = 'input_with_segmentation' + ext.lower()
+        input_with_seg_file = Image.blend(Image.open(input_img_file).convert('RGBA'), Image.open(col_seg_file).convert('RGBA'), 0.2)
+        input_with_seg_file.save(res_dir / input_with_seg_file_name)
 
         content = {}
         content['time'] = now
