@@ -330,13 +330,6 @@ class InputImage(param.Parameterized):
                 img = img.convert('RGB')
         elif ext.lower() in ('.tif', '.tiff'):
             img = tifffile.imread(str(path))
-            # dataset = gdal.Open(str(path))
-            # num_bands = dataset.RasterCount
-            # if num_bands >= 3:
-            #     red = dataset.GetRasterBand(1).ReadAsArray()
-            #     green = dataset.GetRasterBand(2).ReadAsArray()
-            #     blue = dataset.GetRasterBand(3).ReadAsArray()
-            #     arr = np.dstack([red, green, blue])
         arr = np.array(img)
 
         # array is (nrows, ncols, nbands)
