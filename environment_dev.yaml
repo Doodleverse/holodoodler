@@ -22,6 +22,7 @@ dependencies:
  - pytest
  - pytest-cov
  - plotly
+ - gdal
  - pip
  - pip:
    - git+https://github.com/li-plus/pydensecrf.git@0d53acbcf5123d4c88040fe68fbb9805fc5b2fb9

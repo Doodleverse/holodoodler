@@ -17,15 +17,13 @@ import param
 import panel as pn
 import tifffile
 import PIL
-from PIL import ImageDraw
-from PIL import Image
+from PIL import Image, ImageDraw
+from osgeo import gdal
 
 # from .segmentation.annotations_to_segmentations import label_to_colors
 # from .segmentation.image_segmentation import segmentation
 
-from doodler_engine.annotations_to_segmentations import segmentation, check_sanity
-from doodler_engine.annotations_to_segmentations import label_to_colors
-
+from doodler_engine.annotations_to_segmentations import segmentation, check_sanity, label_to_colors
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +158,7 @@ class DoodleDrawer(pn.viewable.Viewer):
         ).opts(active_tools=['freehand_draw'])
         # Create a FreeHandDraw linked stream and attach it to the DynamicMap/
         # The DynamicMap plot is going to serve as a support for the draw tool,
-        # and the data is going to be save in the stream (see .element or .data).
+        # and the data is going to be saved in the stream (see .element or .data).
         self._draw_stream = hv.streams.FreehandDraw(source=self._draw)
 
         # This Pipe is going to send lines accumulated from previous drawing 'sessions',
@@ -209,7 +207,7 @@ class DoodleDrawer(pn.viewable.Viewer):
                 if event:
                     df_line[ppt] = event.old if event.name == ppt else getattr(self, ppt)
                 else:
-                    # Ne event means that we want the current properties.
+                    # New event means that we want the current properties.
                     df_line[ppt] = getattr(self, ppt)
             df_line['label_class'] = self._prev_label_class
         self._accumulated_lines.extend(lines)
@@ -277,7 +275,7 @@ def doodles_as_array(
         vertices = list(doodle[['x', 'y']].itertuples(index=False, name=None))
         # There's a unique width per line
         line_width = doodle.loc[0, 'line_width']
-        # Index of the colomap + 1
+        # Index of the colormap + 1
         line_color = doodle.loc[0, 'line_color']
         fill_value = colormap.index(line_color) + 1
         drawing.line(
@@ -331,8 +329,9 @@ class InputImage(param.Parameterized):
             if img.mode == 'CMYK':
                 img = img.convert('RGB')
         elif ext.lower() in ('.tif', '.tiff'):
-            img = tifffile.imread(path)
+            img = tifffile.imread(str(path))
         arr = np.array(img)
+
         # array is (nrows, ncols, nbands)
         return arr
 
@@ -342,22 +341,28 @@ class InputImage(param.Parameterized):
             self._plot = self._pane.object = hv.RGB(data=[])
             return
         self.array = array = self.read_from_fs(self.location)
+        
         # this is where we want to split the image array used for doodling
         # and the n-band array for segmentation
-        print("\n array.shape ", array.shape)
         if np.ndim(array) <=2:
-            print("np.ndim(array)", np.ndim(array))          
             array = np.dstack((array,array,array))
         
         h, w, nbands = array.shape
-
         if nbands > 3:
             img = array[:, :, 0:3].copy()
         else:
             img = array.copy()
 
-        self.img_bounds = (0, 0, w, h)
+        # Make sure image array is within the range
+        # [0, 255] for integers or [0, 1] for floats.
+        if np.issubdtype(img.dtype, np.integer) and not (np.all(img >= 0) and np.all(img <= 255)):
+            img = (img / np.amax(img) * 255).astype(np.uint8)
+        elif np.issubdtype(img.dtype, np.floating) and not (np.all(img >= 0) and np.all(img <= 1)):
+            img = img / np.amax(img)
+            img[img == float("-inf")] = 0
+
         # Preserve the aspect ratio
+        self.img_bounds = (0, 0, w, h)
         self._plot = self._pane.object = hv.RGB(
             img, bounds=self.img_bounds
         ).opts(aspect=(w / h))
@@ -652,12 +657,68 @@ class Application(param.Parameterized):
         res_dir = root_res_dir / now
         res_dir.mkdir()
 
-        input_img_file = res_dir / 'input.jpeg'
-        imageio.imwrite(input_img_file, self.input_image.array)
-        doodles_file = res_dir / 'doodles.jpeg'
+        _, ext = os.path.splitext(self.input_image.location)
+        input_file_format = ext.lower()
+        input_file_name = 'input' + input_file_format
+        input_img_file = res_dir / input_file_name
+        input_geotransform = None
+        if input_file_format in ('.tif', '.tiff'):
+            # Make a copy of the inputted TIFF file.
+            driver = gdal.GetDriverByName('GTiff')
+            driver.Register()
+            input_dataset = gdal.Open(str(self.input_image.location))
+            input_geotransform = input_dataset.GetGeoTransform(can_return_null=1)
+            output_dataset = driver.CreateCopy(str(input_img_file), input_dataset, strict=0)
+            output_dataset = None
+            input_dataset = None
+        else:
+            imageio.imwrite(input_img_file, self.input_image.array)
+        
+        doodles_file = res_dir / 'doodles.png'
         imageio.imwrite(doodles_file, self._mask_doodles)
-        col_seg_file = res_dir / 'colorized_segmentation.png'
-        imageio.imwrite(col_seg_file, self._segmentation_color)
+        
+        col_seg_file_name = 'colorized_segmentation' + input_file_format
+        if input_file_format in ('.jpg', '.jpeg'): col_seg_file_name = 'colorized_segmentation.png'
+        col_seg_file = res_dir / col_seg_file_name
+        if input_file_format in ('.tif', '.tiff'):
+            rows, cols, num_bands = self._segmentation_color.shape
+            input_dataset = gdal.Open(str(self.input_image.location))
+            # Create a TIFF output file with the segmentation result and georeferencing information (if the file is a GeoTIFF).
+            driver = gdal.GetDriverByName('GTiff')
+            driver.Register()
+            output_dataset = driver.Create(str(col_seg_file), cols, rows, num_bands, gdal.GDT_Byte, ['PHOTOMETRIC=RGB', 'ALPHA=YES'])
+            if input_geotransform is not None:
+                output_dataset.SetGeoTransform(input_geotransform)
+                output_dataset.SetProjection(input_dataset.GetProjection())
+            # Write each color and alpha channel as a raster band in the TIFF file.
+            for i in range(num_bands):
+                seg_band = np.asarray(self._segmentation_color[:, :, i].copy())
+                output_dataset.GetRasterBand(i+1).WriteArray(seg_band)
+            # Flush the cache to save its data to the new TIFF file.
+            output_dataset.FlushCache()
+            # Close datasets to complete writing and flushing the output dataset to the local disk.
+            output_dataset = None
+            input_dataset = None
+        else:
+            imageio.imwrite(col_seg_file, self._segmentation_color)
+        
+        overlay_file_name = 'overlay' + input_file_format
+        if input_file_format in ('.jpg', '.jpeg'): overlay_file_name = 'overlay.png'
+        overlay_file_path = res_dir / overlay_file_name
+        if input_file_format in ('.tif', '.tiff'):
+            if input_geotransform is not None:  # input file is a GeoTIFF
+                overlay_file = gdal.Warp(str(overlay_file_path), [str(input_img_file), str(col_seg_file)], format='GTiff')
+                overlay_file = None
+            else:   # input file is a normal TIFF file without georeferenced coordinates
+                input_img = Image.fromarray(np.uint8(self.input_image.array)).convert('RGBA')
+                seg_img = Image.fromarray(np.uint8(self._segmentation_color)).convert('RGBA')
+                overlay_file = Image.blend(input_img, seg_img, 0.5)
+                overlay_file.save(overlay_file_path)
+        else:   # input file is a JPG/JPEG
+            input_img = Image.open(input_img_file).convert('RGBA')
+            seg_img = Image.open(col_seg_file).convert('RGBA')
+            overlay_file = Image.blend(input_img, seg_img, 0.5)
+            overlay_file.save(overlay_file_path)
 
         content = {}
         content['time'] = now
@@ -671,6 +732,7 @@ class Application(param.Parameterized):
         out = {}
         out['doodles'] = str(doodles_file)
         out['colorized_segmentation'] = str(col_seg_file)
+        out['overlay'] = str(overlay_file_path)
         content['output'] = out
 
         json_file = res_dir / 'info.json'
