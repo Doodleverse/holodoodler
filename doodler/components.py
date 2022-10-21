@@ -358,8 +358,11 @@ class InputImage(param.Parameterized):
         if np.issubdtype(img.dtype, np.integer) and not (np.all(img >= 0) and np.all(img <= 255)):
             img = (img / np.amax(img) * 255).astype(np.uint8)
         elif np.issubdtype(img.dtype, np.floating) and not (np.all(img >= 0) and np.all(img <= 1)):
+            # Infinity can only be represented as a float as of right now,
+            # so we don't need the following two lines for scaling integers.
+            img[img == float("-inf")] = float(0)
+            img[img == float("inf")] = float(1)
             img = img / np.amax(img)
-            img[img == float("-inf")] = 0
 
         # Preserve the aspect ratio
         self.img_bounds = (0, 0, w, h)
