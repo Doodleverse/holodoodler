@@ -657,39 +657,49 @@ class Application(param.Parameterized):
         res_dir = root_res_dir / now
         res_dir.mkdir()
 
-        _, ext = os.path.splitext(self.input_image.location)
+        input_file = os.path.basename(self.input_image.location)
+        input_name, ext = os.path.splitext(input_file)
         input_file_format = ext.lower()
-        input_file_name = 'input' + input_file_format
-        input_img_file = res_dir / input_file_name
+        if input_file_format in ('.jpg', '.jpeg'): input_file_format = '.png'
         input_geotransform = None
+        input_projection = None
+        
+        doodles_name = input_name + '_doodles' + input_file_format
+        doodles_file = res_dir / doodles_name
+        imageio.imwrite(doodles_file, self._mask_doodles)
+        
+        # grayscale segmentation = 1-band 8-bit integer or greyscale version of the Doodler output, before it gets colorized
+        grayscale_segmentation_name = input_name + '_label' + input_file_format
+        grayscale_segmentation_file = res_dir / grayscale_segmentation_name
+        colorized_segmentation_name = input_name + '_colorlabel' + input_file_format
+        colorized_segmentation_file = res_dir / colorized_segmentation_name
         if input_file_format in ('.tif', '.tiff'):
-            # Make a copy of the inputted TIFF file.
-            driver = gdal.GetDriverByName('GTiff')
-            driver.Register()
+            rows, cols = self._segmentation.shape
             input_dataset = gdal.Open(str(self.input_image.location))
             input_geotransform = input_dataset.GetGeoTransform(can_return_null=1)
-            output_dataset = driver.CreateCopy(str(input_img_file), input_dataset, strict=0)
+            driver = gdal.GetDriverByName('GTiff')
+            driver.Register()
+            output_dataset = driver.Create(str(grayscale_segmentation_file), cols, rows, 1, gdal.GDT_Byte)
+            if input_geotransform is not None:
+                input_projection = input_dataset.GetProjection()
+                output_dataset.SetGeoTransform(input_geotransform)
+                output_dataset.SetProjection(input_projection)
+            output_dataset.GetRasterBand(1).WriteArray(self._segmentation)
+            output_dataset.FlushCache()
             output_dataset = None
             input_dataset = None
         else:
-            imageio.imwrite(input_img_file, self.input_image.array)
+            imageio.imwrite(grayscale_segmentation_file, self._segmentation)
         
-        doodles_file = res_dir / 'doodles.png'
-        imageio.imwrite(doodles_file, self._mask_doodles)
-        
-        col_seg_file_name = 'colorized_segmentation' + input_file_format
-        if input_file_format in ('.jpg', '.jpeg'): col_seg_file_name = 'colorized_segmentation.png'
-        col_seg_file = res_dir / col_seg_file_name
         if input_file_format in ('.tif', '.tiff'):
             rows, cols, num_bands = self._segmentation_color.shape
-            input_dataset = gdal.Open(str(self.input_image.location))
             # Create a TIFF output file with the segmentation result and georeferencing information (if the file is a GeoTIFF).
             driver = gdal.GetDriverByName('GTiff')
             driver.Register()
-            output_dataset = driver.Create(str(col_seg_file), cols, rows, num_bands, gdal.GDT_Byte, ['PHOTOMETRIC=RGB', 'ALPHA=YES'])
+            output_dataset = driver.Create(str(colorized_segmentation_file), cols, rows, num_bands, gdal.GDT_Byte, ['PHOTOMETRIC=RGB', 'ALPHA=YES'])
             if input_geotransform is not None:
                 output_dataset.SetGeoTransform(input_geotransform)
-                output_dataset.SetProjection(input_dataset.GetProjection())
+                output_dataset.SetProjection(input_projection)
             # Write each color and alpha channel as a raster band in the TIFF file.
             for i in range(num_bands):
                 seg_band = np.asarray(self._segmentation_color[:, :, i].copy())
@@ -698,27 +708,8 @@ class Application(param.Parameterized):
             output_dataset.FlushCache()
             # Close datasets to complete writing and flushing the output dataset to the local disk.
             output_dataset = None
-            input_dataset = None
         else:
-            imageio.imwrite(col_seg_file, self._segmentation_color)
-        
-        overlay_file_name = 'overlay' + input_file_format
-        if input_file_format in ('.jpg', '.jpeg'): overlay_file_name = 'overlay.png'
-        overlay_file_path = res_dir / overlay_file_name
-        if input_file_format in ('.tif', '.tiff'):
-            if input_geotransform is not None:  # input file is a GeoTIFF
-                overlay_file = gdal.Warp(str(overlay_file_path), [str(input_img_file), str(col_seg_file)], format='GTiff')
-                overlay_file = None
-            else:   # input file is a normal TIFF file without georeferenced coordinates
-                input_img = Image.fromarray(np.uint8(self.input_image.array)).convert('RGBA')
-                seg_img = Image.fromarray(np.uint8(self._segmentation_color)).convert('RGBA')
-                overlay_file = Image.blend(input_img, seg_img, 0.5)
-                overlay_file.save(overlay_file_path)
-        else:   # input file is a JPG/JPEG
-            input_img = Image.open(input_img_file).convert('RGBA')
-            seg_img = Image.open(col_seg_file).convert('RGBA')
-            overlay_file = Image.blend(input_img, seg_img, 0.5)
-            overlay_file.save(overlay_file_path)
+            imageio.imwrite(colorized_segmentation_file, self._segmentation_color)
 
         content = {}
         content['time'] = now
@@ -727,15 +718,16 @@ class Application(param.Parameterized):
         content['classes'] = self.doodle_drawer.classes
         content['colormap'] = self.doodle_drawer.colormap
         in_ = {}
-        in_['image'] = str(input_img_file)
+        in_['image'] = str(self.input_image.location)
         content['input'] = in_
         out = {}
         out['doodles'] = str(doodles_file)
-        out['colorized_segmentation'] = str(col_seg_file)
-        out['overlay'] = str(overlay_file_path)
+        out['colorlabel'] = str(colorized_segmentation_file)
+        out['label'] = str(grayscale_segmentation_file)
         content['output'] = out
 
-        json_file = res_dir / 'info.json'
+        json_name = input_name + '_info.json'
+        json_file = res_dir / json_name
         with open(json_file, 'w') as finfo:
             json.dump(content, finfo, indent=4)
         self.info.add('Done! Onto the next one!')
