@@ -661,8 +661,6 @@ class Application(param.Parameterized):
         input_name, ext = os.path.splitext(input_file)
         input_file_format = ext.lower()
         if input_file_format in ('.jpg', '.jpeg'): input_file_format = '.png'
-        input_geotransform = None
-        input_projection = None
         
         doodles_name = input_name + '_doodles' + input_file_format
         doodles_file = res_dir / doodles_name
@@ -671,44 +669,46 @@ class Application(param.Parameterized):
         # grayscale segmentation = 1-band 8-bit integer or greyscale version of the Doodler output, before it gets colorized
         grayscale_segmentation_name = input_name + '_label' + input_file_format
         grayscale_segmentation_file = res_dir / grayscale_segmentation_name
+        # colorized segmentation = Doodler output with colors
         colorized_segmentation_name = input_name + '_colorlabel' + input_file_format
         colorized_segmentation_file = res_dir / colorized_segmentation_name
         if input_file_format in ('.tif', '.tiff'):
-            rows, cols = self._segmentation.shape
+            grayscale_rows, grayscale_cols = self._segmentation.shape
+            colorized_rows, colorized_cols, colorized_num_bands = self._segmentation_color.shape
             input_dataset = gdal.Open(str(self.input_image.location))
             input_geotransform = input_dataset.GetGeoTransform(can_return_null=1)
-            driver = gdal.GetDriverByName('GTiff')
-            driver.Register()
-            output_dataset = driver.Create(str(grayscale_segmentation_file), cols, rows, 1, gdal.GDT_Byte)
-            if input_geotransform is not None:
-                input_projection = input_dataset.GetProjection()
-                output_dataset.SetGeoTransform(input_geotransform)
-                output_dataset.SetProjection(input_projection)
-            output_dataset.GetRasterBand(1).WriteArray(self._segmentation)
-            output_dataset.FlushCache()
-            output_dataset = None
-            input_dataset = None
-        else:
-            imageio.imwrite(grayscale_segmentation_file, self._segmentation)
-        
-        if input_file_format in ('.tif', '.tiff'):
-            rows, cols, num_bands = self._segmentation_color.shape
             # Create a TIFF output file with the segmentation result and georeferencing information (if the file is a GeoTIFF).
             driver = gdal.GetDriverByName('GTiff')
             driver.Register()
-            output_dataset = driver.Create(str(colorized_segmentation_file), cols, rows, num_bands, gdal.GDT_Byte, ['PHOTOMETRIC=RGB', 'ALPHA=YES'])
+            grayscale_output_dataset = driver.Create(
+                str(grayscale_segmentation_file),
+                grayscale_cols, grayscale_rows, 1, gdal.GDT_Byte
+            )
+            colorized_output_dataset = driver.Create(
+                str(colorized_segmentation_file),
+                colorized_cols, colorized_rows, colorized_num_bands, gdal.GDT_Byte,
+                ['PHOTOMETRIC=RGB', 'ALPHA=YES']
+            )
             if input_geotransform is not None:
-                output_dataset.SetGeoTransform(input_geotransform)
-                output_dataset.SetProjection(input_projection)
+                input_projection = input_dataset.GetProjection()
+                grayscale_output_dataset.SetGeoTransform(input_geotransform)
+                grayscale_output_dataset.SetProjection(input_projection)
+                colorized_output_dataset.SetGeoTransform(input_geotransform)
+                colorized_output_dataset.SetProjection(input_projection)
             # Write each color and alpha channel as a raster band in the TIFF file.
-            for i in range(num_bands):
+            grayscale_output_dataset.GetRasterBand(1).WriteArray(self._segmentation)
+            for i in range(colorized_num_bands):
                 seg_band = np.asarray(self._segmentation_color[:, :, i].copy())
-                output_dataset.GetRasterBand(i+1).WriteArray(seg_band)
+                colorized_output_dataset.GetRasterBand(i+1).WriteArray(seg_band)
             # Flush the cache to save its data to the new TIFF file.
-            output_dataset.FlushCache()
+            grayscale_output_dataset.FlushCache()
+            colorized_output_dataset.FlushCache()
             # Close datasets to complete writing and flushing the output dataset to the local disk.
-            output_dataset = None
+            grayscale_output_dataset = None
+            colorized_output_dataset = None
+            input_dataset = None
         else:
+            imageio.imwrite(grayscale_segmentation_file, self._segmentation)
             imageio.imwrite(colorized_segmentation_file, self._segmentation_color)
 
         content = {}
@@ -722,8 +722,8 @@ class Application(param.Parameterized):
         content['input'] = in_
         out = {}
         out['doodles'] = str(doodles_file)
-        out['colorlabel'] = str(colorized_segmentation_file)
         out['label'] = str(grayscale_segmentation_file)
+        out['colorlabel'] = str(colorized_segmentation_file)
         content['output'] = out
 
         json_name = input_name + '_info.json'
