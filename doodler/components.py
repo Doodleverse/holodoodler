@@ -640,6 +640,40 @@ class Application(param.Parameterized):
             duration = round(time.time() - start_time, 1)
             self.info.add(f'Process done in {duration}s.')
 
+    def save_output_file(self, data, location, input_file_format, num_bands=1, file_options=[]):
+        if input_file_format in ('.tif', '.tiff'):
+            # Create a TIFF output file with georeferencing information (if the file is a GeoTIFF).
+            rows, cols = data.shape[0], data.shape[1]
+            driver = gdal.GetDriverByName('GTiff')
+            driver.Register()
+            output_dataset = driver.Create(
+                str(location),
+                cols, rows, num_bands,
+                gdal.GDT_Byte,
+                file_options
+            )
+            input_dataset = gdal.Open(str(self.input_image.location))
+            input_geotransform = input_dataset.GetGeoTransform(can_return_null=1)
+            if input_geotransform is not None:
+                input_projection = input_dataset.GetProjection()
+                output_dataset.SetGeoTransform(input_geotransform)
+                output_dataset.SetProjection(input_projection)
+            # Write each color and alpha channel as a raster band in the TIFF file.
+            if num_bands == 1:
+                output_dataset.GetRasterBand(1).WriteArray(data)
+            else:
+                for i in range(num_bands):
+                    seg_band = np.asarray(data[:, :, i].copy())
+                    output_dataset.GetRasterBand(i+1).WriteArray(seg_band)
+            # Flush the cache to save its data to the new TIFF file.
+            output_dataset.FlushCache()
+            # Close datasets to complete writing and flushing the output dataset to the local disk.
+            output_dataset = None
+            input_dataset = None
+        else:
+            # Create a PNG output file.
+            imageio.imwrite(location, data)
+
     @param.depends('save_segmentation', watch=True)
     def _save_segmentation(self):
         """
@@ -661,55 +695,32 @@ class Application(param.Parameterized):
         input_name, ext = os.path.splitext(input_file)
         input_file_format = ext.lower()
         if input_file_format in ('.jpg', '.jpeg'): input_file_format = '.png'
-        
+        # doodles = 1-band 8-bit integer (greyscale) version of the user's doodles
         doodles_name = input_name + '_doodles' + input_file_format
         doodles_file = res_dir / doodles_name
-        imageio.imwrite(doodles_file, self._mask_doodles)
-        
-        # grayscale segmentation = 1-band 8-bit integer or greyscale version of the Doodler output, before it gets colorized
+        self.save_output_file(
+            self._mask_doodles,
+            doodles_file,
+            input_file_format
+        )
+        # grayscale segmentation = 1-band 8-bit integer (greyscale) version of the Doodler output, before it gets colorized
         grayscale_segmentation_name = input_name + '_label' + input_file_format
         grayscale_segmentation_file = res_dir / grayscale_segmentation_name
-        # colorized segmentation = Doodler output with colors
+        self.save_output_file(
+            self._segmentation,
+            grayscale_segmentation_file,
+            input_file_format
+        )
+        # colorized segmentation = multi-band 8-bit integer (RGBA) version of the Doodler output with colors
         colorized_segmentation_name = input_name + '_colorlabel' + input_file_format
         colorized_segmentation_file = res_dir / colorized_segmentation_name
-        if input_file_format in ('.tif', '.tiff'):
-            grayscale_rows, grayscale_cols = self._segmentation.shape
-            colorized_rows, colorized_cols, colorized_num_bands = self._segmentation_color.shape
-            input_dataset = gdal.Open(str(self.input_image.location))
-            input_geotransform = input_dataset.GetGeoTransform(can_return_null=1)
-            # Create a TIFF output file with the segmentation result and georeferencing information (if the file is a GeoTIFF).
-            driver = gdal.GetDriverByName('GTiff')
-            driver.Register()
-            grayscale_output_dataset = driver.Create(
-                str(grayscale_segmentation_file),
-                grayscale_cols, grayscale_rows, 1, gdal.GDT_Byte
-            )
-            colorized_output_dataset = driver.Create(
-                str(colorized_segmentation_file),
-                colorized_cols, colorized_rows, colorized_num_bands, gdal.GDT_Byte,
-                ['PHOTOMETRIC=RGB', 'ALPHA=YES']
-            )
-            if input_geotransform is not None:
-                input_projection = input_dataset.GetProjection()
-                grayscale_output_dataset.SetGeoTransform(input_geotransform)
-                grayscale_output_dataset.SetProjection(input_projection)
-                colorized_output_dataset.SetGeoTransform(input_geotransform)
-                colorized_output_dataset.SetProjection(input_projection)
-            # Write each color and alpha channel as a raster band in the TIFF file.
-            grayscale_output_dataset.GetRasterBand(1).WriteArray(self._segmentation)
-            for i in range(colorized_num_bands):
-                seg_band = np.asarray(self._segmentation_color[:, :, i].copy())
-                colorized_output_dataset.GetRasterBand(i+1).WriteArray(seg_band)
-            # Flush the cache to save its data to the new TIFF file.
-            grayscale_output_dataset.FlushCache()
-            colorized_output_dataset.FlushCache()
-            # Close datasets to complete writing and flushing the output dataset to the local disk.
-            grayscale_output_dataset = None
-            colorized_output_dataset = None
-            input_dataset = None
-        else:
-            imageio.imwrite(grayscale_segmentation_file, self._segmentation)
-            imageio.imwrite(colorized_segmentation_file, self._segmentation_color)
+        self.save_output_file(
+            self._segmentation_color,
+            colorized_segmentation_file,
+            input_file_format,
+            num_bands = self._segmentation_color.shape[2],
+            file_options = ['PHOTOMETRIC=RGB', 'ALPHA=YES']
+        )
 
         content = {}
         content['time'] = now
