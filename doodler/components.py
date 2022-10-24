@@ -331,6 +331,7 @@ class InputImage(param.Parameterized):
         elif ext.lower() in ('.tif', '.tiff'):
             img = tifffile.imread(str(path))
         arr = np.array(img)
+        print(arr.dtype)
 
         # array is (nrows, ncols, nbands)
         return arr
@@ -356,7 +357,7 @@ class InputImage(param.Parameterized):
         # Make sure image array is within the range
         # [0, 255] for integers or [0, 1] for floats.
         if np.issubdtype(img.dtype, np.integer) and not (np.all(img >= 0) and np.all(img <= 255)):
-            img = (img / np.amax(img) * 255)
+            img = (np.rint(img / np.amax(img) * 255)).astype(int)
         elif np.issubdtype(img.dtype, np.floating) and not (np.all(img >= 0) and np.all(img <= 1)):
             # Infinity can only be represented as a float as of right now,
             # so we don't need the following two lines for scaling integers.
