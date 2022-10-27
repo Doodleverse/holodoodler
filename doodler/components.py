@@ -331,7 +331,6 @@ class InputImage(param.Parameterized):
         elif ext.lower() in ('.tif', '.tiff'):
             img = tifffile.imread(str(path))
         arr = np.array(img)
-        print(arr.dtype)
 
         # array is (nrows, ncols, nbands)
         return arr
