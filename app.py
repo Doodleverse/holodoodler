@@ -70,6 +70,7 @@ side_bar = [
     pn.pane.HTML('<b>Doodling options</b>'),
     app.doodle_drawer.class_toggle_group,
     app.doodle_drawer.param.line_width,
+    app.doodle_drawer.remove_doodle_button,
     app.doodle_drawer.param.clear_all,
     app.settings,
     pn.widgets.Button.from_param(app.param.compute_segmentation, button_type='primary'),
