@@ -243,8 +243,6 @@ class DoodleDrawer(pn.viewable.Viewer):
 
     @param.depends('remove_doodles', watch=True)
     def _remove_doodles(self):
-        print("selected _draw doodles:", self._draw_selection_stream.index)
-        print("selected _drawn doodles:", self._drawn_selection_stream.index)
         # If the user is allowed to remove selected doodles (button is enabled)...
         if not self._remove_doodles_button.disabled:
             if self._draw_selection_stream.index:
@@ -519,9 +517,9 @@ class Info(pn.viewable.Viewer):
     def __init__(self):
         super().__init__()
         self._toolbar_instructions = ''.join([
-            'To select doodles, click the Tap tool ![Tap tool](assets/TapTool.png) next to the image.<br>',
+            'To select doodles, click the **Tap tool** <img src="https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/TapTool.png" alt="Tap tool" width="16"/> next to the image.<br>',
             'Click on a doodle to select it, and click on an empty image area to unselect.<br><br>',
-            'To doodle, click the Freehand Draw tool ![Freehand Draw tool](assets/FreehandDrawTool.png) next to the image.'
+            'To doodle, click the **Freehand Draw tool** <img src="https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/FreehandDrawTool.png" alt="Freehand Draw tool" width="16"/> next to the image.'
         ])
         self._pane = pn.pane.Alert(object=self._toolbar_instructions, min_height=150, sizing_mode='stretch_both')
 
