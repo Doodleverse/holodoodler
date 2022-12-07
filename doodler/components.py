@@ -5,7 +5,6 @@ import logging
 import os
 import pathlib
 import time
-from collections import defaultdict
 
 from typing import List, Optional, Dict
 
@@ -20,7 +19,6 @@ import tifffile
 import PIL
 from PIL import Image, ImageDraw
 from osgeo import gdal
-import keyboard
 
 # from .segmentation.annotations_to_segmentations import label_to_colors
 # from .segmentation.image_segmentation import segmentation
@@ -122,7 +120,7 @@ class DoodleDrawer(pn.viewable.Viewer):
 
     line_width = param.Integer(default=2, bounds=(1, 10), doc='Line width slider')
 
-    remove_doodle = param.Event(label='Remove selected doodle', doc='Button to remove the selected doodle')
+    remove_doodles = param.Event(label='Remove selected doodle(s)', doc='Button to remove the selected doodle(s)')
 
     clear_all = param.Event(label='Clear doodles', doc='Button to clear all the doodles')
 
@@ -154,12 +152,12 @@ class DoodleDrawer(pn.viewable.Viewer):
 
             self.class_toggle_group.param.watch(link, 'active')
 
-        # Pipe used to initialize the draw plot and clear it in ._accumulate_drawn_lines()
+        # Pipe used to initialize the draw plot, clear it in ._accumulate_drawn_lines(), and update it in ._remove_doodles().
         self._draw_pipe = hv.streams.Pipe(data=[])
         # The DynamicMap reacts to the parameters change to draw lines with the desired style.
-        self._draw = hv.DynamicMap(self._clear_draw_cb, streams=[self._draw_pipe]).apply.opts(
+        self._draw = hv.DynamicMap(self._update_draw_cb, streams=[self._draw_pipe]).apply.opts(
             color=self.param.line_color, line_width=self.param.line_width
-        ).opts(active_tools=['freehand_draw'])
+        ).opts(active_tools=['freehand_draw'], selected=[])
         # Create a FreeHandDraw linked stream and attach it to the DynamicMap/
         # The DynamicMap plot is going to serve as a support for the draw tool,
         # and the data is going to be saved in the stream (see .element or .data).
@@ -170,7 +168,7 @@ class DoodleDrawer(pn.viewable.Viewer):
         self._drawn_pipe = hv.streams.Pipe()
         self._drawn = hv.DynamicMap(self._drawn_cb, streams=[self._drawn_pipe]).apply.opts(
             color='line_color', line_width='line_width'
-        ).opts(selected=[], tools=['tap'])
+        ).opts(tools=['tap'], selected=[])
 
         # Set the ._accumulate_drawn_lines() callback on parameter changes to gather
         # the lines previously drawn.
@@ -179,28 +177,27 @@ class DoodleDrawer(pn.viewable.Viewer):
         # Store the previous label class, this is used in ._accumulate_drawn_lines
         self._prev_label_class = self.label_class
         
-        # Create a custom widget (allows dynamically setting disabled property) for the remove_doodle parameter.
-        self._remove_doodle_button = pn.widgets.Button.from_param(
-            parameter=self.param.remove_doodle,
+        # Create a custom widget (allows dynamically setting disabled property) for the remove_doodles parameter.
+        self._remove_doodles_button = pn.widgets.Button.from_param(
+            parameter=self.param.remove_doodles,
             name='Remove selected doodle(s)',
             button_type='default', disabled=True
         )
         # For each DynamicMap containing doodles, create a Selection1D linked stream
-        # and attach it to the DynamicMap to see if a doodle was selected.
+        # and attach it to the DynamicMap to see if at least one doodle was selected.
         self._draw_selection_stream = hv.streams.Selection1D(source=self._draw)
         self._drawn_selection_stream = hv.streams.Selection1D(source=self._drawn)
-        # Add a subscriber that enables/disables the ability to remove a doodle depending on whether a doodle was selected.
-        self._draw_selection_stream.add_subscriber(self._set_remove_doodle_ability)
-        self._drawn_selection_stream.add_subscriber(self._set_remove_doodle_ability)
+        # Add a subscriber that enables/disables the ability to remove doodles depending on whether a doodle was selected.
+        self._draw_selection_stream.add_subscriber(self._set_remove_doodles_ability)
+        self._drawn_selection_stream.add_subscriber(self._set_remove_doodles_ability)
 
     @param.depends('label_class', watch=True)
     def _update_color(self):
         self.line_color = self.class_color_mapping[self.label_class]
 
-    def _clear_draw_cb(self, data: Dict):
-        """Clear the lines drawn in a session.
+    def _update_draw_cb(self, data: Dict):
+        """Update the lines drawn in a session.
         """
-        # data is always []
         return hv.Contours(data)
 
     def _drawn_cb(self, data: Optional[List[pd.DataFrame]]):
@@ -228,9 +225,7 @@ class DoodleDrawer(pn.viewable.Viewer):
                     # No event means that we want the current properties.
                     df_line[ppt] = getattr(self, ppt)
             df_line['label_class'] = self._prev_label_class
-            print("current doodles/lines' points:", df_line)
         self._accumulated_lines.extend(lines)
-        print("_accumulated_lines", self._accumulated_lines)
         # Clear the plot from the lines just drawn
         self._draw_pipe.event(data=[])
         # Clear the draw stream
@@ -240,28 +235,34 @@ class DoodleDrawer(pn.viewable.Viewer):
 
         self._prev_label_class = self.label_class
 
-    def _set_remove_doodle_ability(self, index: Optional[List[int]] = []):
-        # Enable the remove_doodle button if a doodle is selected.
-        if index:
-            self._remove_doodle_button.disabled = False
+    def _set_remove_doodles_ability(self, index: Optional[List[int]] = []):
+        # Enable the remove_doodles button if at least one doodle is selected.
+        if index: self._remove_doodles_button.disabled = False
         # Else disable the button if no doodles are selected.
-        else:
-            self._remove_doodle_button.disabled = True
+        else: self._remove_doodles_button.disabled = True
 
-    @param.depends('remove_doodle', watch=True)
-    def _remove_doodle(self):
-        # If the user is allowed to remove a selected doodle (button is enabled)...
-        if not self._remove_doodle_button.disabled:
+    @param.depends('remove_doodles', watch=True)
+    def _remove_doodles(self):
+        print("selected _draw doodles:", self._draw_selection_stream.index)
+        print("selected _drawn doodles:", self._drawn_selection_stream.index)
+        # If the user is allowed to remove selected doodles (button is enabled)...
+        if not self._remove_doodles_button.disabled:
             if self._draw_selection_stream.index:
-                # Remove the selected doodle(s) by programmatically pressing the BACKSPACE key.
-                keyboard.press_and_release('backspace')
-                # Disable the button once the doodle is removed and no doodles are selected.
-                self._remove_doodle_button.disabled = True
-            elif self._drawn_selection_stream.index:
+                # Remove the selected doodle(s) from the draw stream.
+                new_doodles_data = self._draw_stream.data.copy()
+                for col, doodles_vals in new_doodles_data.items():
+                    new_doodles_data[col] = [doodle_vals for i, doodle_vals in enumerate(doodles_vals) if i not in self._draw_selection_stream.index]
+                self._draw_stream.event(data=new_doodles_data)
+                # Plot the non-removed doodles by sending the draw pipe the modified list of dataframes.
+                new_doodles = [element.dframe() for element in self._draw_stream.element.split()]
+                self._draw_pipe.event(data=new_doodles)
+            if self._drawn_selection_stream.index:
                 # Remove the dataframe that corresponds to each selected drawn doodle.
                 self._accumulated_lines = [doodle for i, doodle in enumerate(self._accumulated_lines) if i not in self._drawn_selection_stream.index]
                 # Plot the non-removed drawn doodles by sending the drawn pipe the modified list of dataframes.
                 self._drawn_pipe.event(data=self._accumulated_lines)
+            # Disable the button once the doodles are removed and no doodles are selected.
+            self._remove_doodles_button.disabled = True
     
     @param.depends('clear_all', watch=True)
     def _update_clear(self):
@@ -292,8 +293,8 @@ class DoodleDrawer(pn.viewable.Viewer):
         return list(self.class_color_mapping.values())
 
     @property
-    def remove_doodle_button(self):
-        return self._remove_doodle_button
+    def remove_doodles_button(self):
+        return self._remove_doodles_button
 
     @property
     def plot(self):
@@ -517,7 +518,12 @@ class Info(pn.viewable.Viewer):
 
     def __init__(self):
         super().__init__()
-        self._pane = pn.pane.Alert(min_height=150, sizing_mode='stretch_both')
+        self._toolbar_instructions = ''.join([
+            'To select doodles, click the Tap tool ![Tap tool](assets/TapTool.png) next to the image.<br>',
+            'Click on a doodle to select it, and click on an empty image area to unselect.<br><br>',
+            'To doodle, click the Freehand Draw tool ![Freehand Draw tool](assets/FreehandDrawTool.png) next to the image.'
+        ])
+        self._pane = pn.pane.Alert(object=self._toolbar_instructions, min_height=150, sizing_mode='stretch_both')
 
     def update(self, msg, msg_type='primary'):
         logger.info(msg)
@@ -529,7 +535,7 @@ class Info(pn.viewable.Viewer):
         self._pane.object += f'<br>{msg}'
 
     def reset(self):
-        self._pane.object = ''
+        self._pane.object = self._toolbar_instructions
         self._pane.alert_type = 'primary'
 
     def __panel__(self):
