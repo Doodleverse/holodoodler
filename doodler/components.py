@@ -157,7 +157,7 @@ class DoodleDrawer(pn.viewable.Viewer):
         # The DynamicMap reacts to the parameters change to draw lines with the desired style.
         self._draw = hv.DynamicMap(self._update_draw_cb, streams=[self._draw_pipe]).apply.opts(
             color=self.param.line_color, line_width=self.param.line_width
-        ).opts(active_tools=['freehand_draw'], selected=[])
+        ).opts(active_tools=['freehand_draw'], selected=[], selection_line_color='#000000', selection_line_width=5, nonselection_alpha=1)
         # Create a FreeHandDraw linked stream and attach it to the DynamicMap/
         # The DynamicMap plot is going to serve as a support for the draw tool,
         # and the data is going to be saved in the stream (see .element or .data).
@@ -168,7 +168,7 @@ class DoodleDrawer(pn.viewable.Viewer):
         self._drawn_pipe = hv.streams.Pipe()
         self._drawn = hv.DynamicMap(self._drawn_cb, streams=[self._drawn_pipe]).apply.opts(
             color='line_color', line_width='line_width'
-        ).opts(tools=['tap'], selected=[])
+        ).opts(tools=['tap'], selected=[], selection_line_color='#000000', selection_line_width=5, nonselection_alpha=1)
 
         # Set the ._accumulate_drawn_lines() callback on parameter changes to gather
         # the lines previously drawn.
@@ -517,9 +517,11 @@ class Info(pn.viewable.Viewer):
     def __init__(self):
         super().__init__()
         self._toolbar_instructions = ''.join([
-            'To select doodles, click the **Tap tool** <img src="https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/TapTool.png" alt="Tap tool" width="16"/> next to the image.<br>',
-            'Click on a doodle to select it, and click on an empty image area to unselect.<br><br>',
-            'To doodle, click the **Freehand Draw tool** <img src="https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/FreehandDrawTool.png" alt="Freehand Draw tool" width="16"/> next to the image.'
+            'To select doodles, click the **Tap tool** <img src="https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/TapTool.png" alt="Tap tool" width="16"/> next to the image.',
+            '<ul><li>Click on a doodle to select it, and click on an empty image area to unselect.</li>',
+            '<li>Hold down the SHIFT key while clicking to select more than one doodle.</li>',
+            '<li>The "Remove selected doodle(s)" button only works when at least one doodle is selected.</li></ul>',
+            'To draw doodles, click the **Freehand Draw tool** <img src="https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/FreehandDrawTool.png" alt="Freehand Draw tool" width="16"/> next to the image.'
         ])
         self._pane = pn.pane.Alert(object=self._toolbar_instructions, min_height=150, sizing_mode='stretch_both')
 
