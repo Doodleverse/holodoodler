@@ -152,12 +152,17 @@ class DoodleDrawer(pn.viewable.Viewer):
 
             self.class_toggle_group.param.watch(link, 'active')
 
+        _shared_plot_opts = {
+            'selected': [], 'selection_line_color': '#000000',
+            'selection_line_width': 5, 'nonselection_alpha': 1
+        }
+        
         # Pipe used to initialize the draw plot, clear it in ._accumulate_drawn_lines(), and update it in ._remove_doodles().
         self._draw_pipe = hv.streams.Pipe(data=[])
         # The DynamicMap reacts to the parameters change to draw lines with the desired style.
         self._draw = hv.DynamicMap(self._update_draw_cb, streams=[self._draw_pipe]).apply.opts(
             color=self.param.line_color, line_width=self.param.line_width
-        ).opts(active_tools=['freehand_draw'], selected=[], selection_line_color='#000000', selection_line_width=5, nonselection_alpha=1)
+        ).opts(active_tools=['freehand_draw'], **(_shared_plot_opts))
         # Create a FreeHandDraw linked stream and attach it to the DynamicMap/
         # The DynamicMap plot is going to serve as a support for the draw tool,
         # and the data is going to be saved in the stream (see .element or .data).
@@ -168,7 +173,7 @@ class DoodleDrawer(pn.viewable.Viewer):
         self._drawn_pipe = hv.streams.Pipe()
         self._drawn = hv.DynamicMap(self._drawn_cb, streams=[self._drawn_pipe]).apply.opts(
             color='line_color', line_width='line_width'
-        ).opts(tools=['tap'], selected=[], selection_line_color='#000000', selection_line_width=5, nonselection_alpha=1)
+        ).opts(tools=['tap'], **(_shared_plot_opts))
 
         # Set the ._accumulate_drawn_lines() callback on parameter changes to gather
         # the lines previously drawn.
@@ -236,6 +241,8 @@ class DoodleDrawer(pn.viewable.Viewer):
         self._prev_label_class = self.label_class
 
     def _set_remove_doodles_ability(self, index: Optional[List[int]] = []):
+        """Enables/disables the button for removing doodles depending on whether doodles are selected.
+        """
         # Enable the remove_doodles button if at least one doodle is selected.
         if index: self._remove_doodles_button.disabled = False
         # Else disable the button if no doodles are selected.
@@ -243,17 +250,19 @@ class DoodleDrawer(pn.viewable.Viewer):
 
     @param.depends('remove_doodles', watch=True)
     def _remove_doodles(self):
+        """Removes any selected doodles when the button for removing doodles is enabled and clicked.
+        """
         # If the user is allowed to remove selected doodles (button is enabled)...
         if not self._remove_doodles_button.disabled:
             if self._draw_selection_stream.index:
                 # Remove the selected doodle(s) from the draw stream.
-                new_doodles_data = self._draw_stream.data.copy()
-                for col, doodles_vals in new_doodles_data.items():
-                    new_doodles_data[col] = [doodle_vals for i, doodle_vals in enumerate(doodles_vals) if i not in self._draw_selection_stream.index]
-                self._draw_stream.event(data=new_doodles_data)
+                remaining_doodles_data = self._draw_stream.data.copy()
+                for col, all_doodles_vals in remaining_doodles_data.items():
+                    remaining_doodles_data[col] = [one_doodle_vals for i, one_doodle_vals in enumerate(all_doodles_vals) if i not in self._draw_selection_stream.index]
+                self._draw_stream.event(data=remaining_doodles_data)
                 # Plot the non-removed doodles by sending the draw pipe the modified list of dataframes.
-                new_doodles = [element.dframe() for element in self._draw_stream.element.split()]
-                self._draw_pipe.event(data=new_doodles)
+                remaining_doodles_dataframes = [element.dframe() for element in self._draw_stream.element.split()]
+                self._draw_pipe.event(data=remaining_doodles_dataframes)
             if self._drawn_selection_stream.index:
                 # Remove the dataframe that corresponds to each selected drawn doodle.
                 self._accumulated_lines = [doodle for i, doodle in enumerate(self._accumulated_lines) if i not in self._drawn_selection_stream.index]
