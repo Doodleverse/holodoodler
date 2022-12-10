@@ -533,7 +533,7 @@ class Application(param.Parameterized):
         super().__init__(**params)
 
     @param.depends('doodle_drawer.clear_all', watch=True)
-    def _init_img_pane(self):
+    def _update_img_pane(self):
         self._img_pane.object = (self.input_image.plot * self.doodle_drawer.plot).opts(responsive='height')
 
     @param.depends('input_image.location', watch=True)
@@ -550,7 +550,7 @@ class Application(param.Parameterized):
 
     @param.depends('clear_segmentation', watch=True, on_init=True)
     def _clear_segmentation(self):
-        self._init_img_pane()
+        self._update_img_pane()
         self._init_segmentation_output()
 
     @param.depends('compute_segmentation', watch=True)
