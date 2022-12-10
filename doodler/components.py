@@ -183,13 +183,11 @@ class DoodleDrawer(pn.viewable.Viewer):
         """Clear the lines drawn in a session.
         """
         # data is always []
-        print("_update_draw_cb data:", data)
         return hv.Contours(data)
 
     def _drawn_cb(self, data: Optional[List[pd.DataFrame]]):
         """Plot all the lines previously drawn.
         """
-        print("_drawn_cb data:", data)
         return hv.Contours(data, kdims=['x', 'y'], vdims=['line_color', 'line_width'])
 
     def _accumulate_drawn_lines(self, event: Optional[param.parameterized.Event] = None):
@@ -201,7 +199,6 @@ class DoodleDrawer(pn.viewable.Viewer):
         # having to deal with that, .split() is used to obtain a dataframe per line.
         lines = [element.dframe() for element in self._draw_stream.element.split()]
         lines = [df_line for df_line in lines if not df_line.empty]
-        print("_accumulate_drawn_lines before:", self._accumulated_lines)
         if not lines:
             return
         # Add to each dataframe/line its properties and its label class
@@ -214,7 +211,6 @@ class DoodleDrawer(pn.viewable.Viewer):
                     df_line[ppt] = getattr(self, ppt)
             df_line['label_class'] = self._prev_label_class
         self._accumulated_lines.extend(lines)
-        print("_accumulate_drawn_lines:", self._accumulated_lines)
         # Clear the plot from the lines just drawn
         self._draw_pipe.event(data=[])
         # Clear the draw stream
@@ -229,7 +225,6 @@ class DoodleDrawer(pn.viewable.Viewer):
         self.clear()
 
     def clear(self):
-        print("clear called!")
         self._accumulated_lines = []
         self._draw_pipe.event(data=[])
         self._drawn_pipe.event(data=[])
