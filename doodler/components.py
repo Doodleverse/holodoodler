@@ -175,6 +175,13 @@ class DoodleDrawer(pn.viewable.Viewer):
         # Store the previous label class, this is used in ._accumulate_drawn_lines
         self._prev_label_class = self.label_class
 
+        # Create a custom widget (allows dynamically setting disabled property) for the clear_all parameter.
+        self._clear_all_doodles_button = pn.widgets.Button.from_param(
+            parameter=self.param.clear_all,
+            name='Clear doodles',
+            button_type='default', loading = False
+        )
+
     @param.depends('label_class', watch=True)
     def _update_color(self):
         self.line_color = self.class_color_mapping[self.label_class]
@@ -222,7 +229,8 @@ class DoodleDrawer(pn.viewable.Viewer):
 
     @param.depends('clear_all', watch=True)
     def _update_clear(self):
-        self.clear()
+        with pn.param.set_values(self._clear_all_doodles_button, loading = True):
+            self.clear()
 
     def clear(self):
         self._accumulated_lines = []
@@ -247,6 +255,10 @@ class DoodleDrawer(pn.viewable.Viewer):
     @property
     def colormap(self):
         return list(self.class_color_mapping.values())
+
+    @property
+    def clear_all_doodles_button(self):
+        return self._clear_all_doodles_button
 
     @property
     def plot(self):
@@ -534,7 +546,8 @@ class Application(param.Parameterized):
 
     @param.depends('doodle_drawer.clear_all', watch=True)
     def _update_img_pane(self):
-        self._img_pane.object = (self.input_image.plot * self.doodle_drawer.plot).opts(responsive='height')
+        with pn.param.set_values(self._img_pane, loading=True):
+            self._img_pane.object = (self.input_image.plot * self.doodle_drawer.plot).opts(responsive='height')
 
     @param.depends('input_image.location', watch=True)
     def _reset(self):
