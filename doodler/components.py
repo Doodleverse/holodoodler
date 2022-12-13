@@ -196,6 +196,13 @@ class DoodleDrawer(pn.viewable.Viewer):
         self._draw_selection_stream.add_subscriber(self._set_remove_doodles_ability)
         self._drawn_selection_stream.add_subscriber(self._set_remove_doodles_ability)
 
+        # Create a custom widget (allows dynamically setting loading property) for the clear_all parameter.
+        self._clear_all_doodles_button = pn.widgets.Button.from_param(
+            parameter=self.param.clear_all,
+            name='Clear doodles',
+            button_type='default', loading = False
+        )
+
     @param.depends('label_class', watch=True)
     def _update_color(self):
         self.line_color = self.class_color_mapping[self.label_class]
@@ -273,7 +280,8 @@ class DoodleDrawer(pn.viewable.Viewer):
     
     @param.depends('clear_all', watch=True)
     def _update_clear(self):
-        self.clear()
+        with pn.param.set_values(self._clear_all_doodles_button, loading = True):
+            self.clear()
 
     def clear(self):
         self._accumulated_lines = []
@@ -302,6 +310,10 @@ class DoodleDrawer(pn.viewable.Viewer):
     @property
     def remove_doodles_button(self):
         return self._remove_doodles_button
+
+    @property
+    def clear_all_doodles_button(self):
+        return self._clear_all_doodles_button
 
     @property
     def plot(self):
@@ -594,8 +606,10 @@ class Application(param.Parameterized):
         self._img_pane = pn.pane.HoloViews(sizing_mode='scale_height')
         super().__init__(**params)
 
-    def _init_img_pane(self):
-        self._img_pane.object = (self.input_image.plot * self.doodle_drawer.plot).opts(responsive='height')
+    @param.depends('doodle_drawer.clear_all', watch=True)
+    def _update_img_pane(self):
+        with pn.param.set_values(self._img_pane, loading=True):
+            self._img_pane.object = (self.input_image.plot * self.doodle_drawer.plot).opts(responsive='height')
 
     @param.depends('input_image.location', watch=True)
     def _reset(self):
@@ -611,7 +625,7 @@ class Application(param.Parameterized):
 
     @param.depends('clear_segmentation', watch=True, on_init=True)
     def _clear_segmentation(self):
-        self._init_img_pane()
+        self._update_img_pane()
         self._init_segmentation_output()
 
     @param.depends('compute_segmentation', watch=True)

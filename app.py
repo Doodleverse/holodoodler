@@ -71,7 +71,7 @@ side_bar = [
     app.doodle_drawer.class_toggle_group,
     app.doodle_drawer.param.line_width,
     app.doodle_drawer.remove_doodles_button,
-    app.doodle_drawer.param.clear_all,
+    app.doodle_drawer.clear_all_doodles_button,
     app.settings,
     pn.widgets.Button.from_param(app.param.compute_segmentation, button_type='primary'),
     pn.widgets.Button.from_param(app.param.clear_segmentation, button_type='warning'),

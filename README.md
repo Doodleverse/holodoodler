@@ -12,11 +12,16 @@ The USGS seeks to achieve this goal by using the HoloViz/Panel ecosystem, which 
 
 ## Installation
 
-Run the following command to create a *conda* environment named `doodler-dev`:
+Run the following command to create a *conda* environment named `holodoodler`:
 
 ```
 conda env create --file environment_dev.yaml
 ```
+Make sure to activate the conda environment with:
+```
+conda activate holodoodler
+```
+before launching the application with any of the following commands.
 
 ## Development
 
