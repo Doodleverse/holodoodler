@@ -356,13 +356,16 @@ class InputImage(param.Parameterized):
         # Make sure image array is within the range
         # [0, 255] for integers or [0, 1] for floats.
         if np.issubdtype(img.dtype, np.integer) and not (np.all(img >= 0) and np.all(img <= 255)):
-            img = (np.rint(img / np.amax(img) * 255)).astype(int)
+            min_pixel_val, max_pixel_val = np.min(img), np.max(img)
+            img = (np.rint(((img - min_pixel_val) / (max_pixel_val - min_pixel_val)) * 255)).astype(int)
         elif np.issubdtype(img.dtype, np.floating) and not (np.all(img >= 0) and np.all(img <= 1)):
             # Infinity can only be represented as a float as of right now,
             # so we don't need the following two lines for scaling integers.
             img[img == float("-inf")] = float(0)
             img[img == float("inf")] = float(1)
-            img = (img / np.amax(img))
+            # Get the minimum and maximim pixel values after removing the +/- infinity values.
+            min_pixel_val, max_pixel_val = np.min(img), np.max(img)
+            img = (img - min_pixel_val) / (max_pixel_val - min_pixel_val)
         
         # Set self.array after its pixel values have been scaled to the expected range.
         self.array = img
