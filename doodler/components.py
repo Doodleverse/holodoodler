@@ -175,11 +175,11 @@ class DoodleDrawer(pn.viewable.Viewer):
         # Store the previous label class, this is used in ._accumulate_drawn_lines
         self._prev_label_class = self.label_class
 
-        # Create a custom widget (allows dynamically setting disabled property) for the clear_all parameter.
+        # Create a custom widget (allows dynamically setting loading property) for the clear_all parameter.
         self._clear_all_doodles_button = pn.widgets.Button.from_param(
             parameter=self.param.clear_all,
             name='Clear doodles',
-            button_type='default', loading = False
+            button_type='default', loading=False
         )
 
     @param.depends('label_class', watch=True)
