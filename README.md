@@ -12,11 +12,16 @@ The USGS seeks to achieve this goal by using the HoloViz/Panel ecosystem, which 
 
 ## Installation
 
-Run the following command to create a *conda* environment named `doodler-dev`:
+Run the following command to create a *conda* environment named `holodoodler`:
 
 ```
 conda env create --file environment_dev.yaml
 ```
+Make sure to activate the conda environment with:
+```
+conda activate holodoodler
+```
+before launching the application with any of the following commands.
 
 ## Development
 
@@ -41,6 +46,15 @@ Note that the application could also be launched with the following command:
 ```
 panel serve doodler_nb.ipynb
 ```
+
+## Using Tools
+Instructions on how to use the tools are provided at the bottom left of the application.\
+![Tools_Instructions](https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/Tools_Instructions.jpg)\
+The Tap tool is for selecting doodles, and the Freehand Draw tool is for drawing doodles. All available tools are to the right of the input image.\
+![All_Tools](https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/All_Tools.jpg)\
+Here is a demo of how to use the tools:\
+![Tools_Demo](https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/Tools_Demo.gif)\
+**Tip: If you used the Tap tool to select doodles for removal, make sure to reactivate the Freehand Draw tool afterwards to continue doodling.** Active tools are marked with a blue border on the left side.
 
 ## Video (not up to date)
 

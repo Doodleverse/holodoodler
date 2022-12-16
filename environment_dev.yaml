@@ -1,9 +1,9 @@
-name: holodoodler-dev37
+name: holodoodler
 channels:
   - conda-forge
   - defaults
 dependencies:
- - python=3.7
+ - python=3.8
  - tifffile
  - CairoSVG
  - matplotlib
@@ -22,8 +22,8 @@ dependencies:
  - pytest
  - pytest-cov
  - plotly
+ - pydensecrf
  - gdal
  - pip
  - pip:
-   - git+https://github.com/li-plus/pydensecrf.git@0d53acbcf5123d4c88040fe68fbb9805fc5b2fb9
    - doodler-engine

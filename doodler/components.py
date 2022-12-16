@@ -120,6 +120,8 @@ class DoodleDrawer(pn.viewable.Viewer):
 
     line_width = param.Integer(default=2, bounds=(1, 10), doc='Line width slider')
 
+    remove_doodles = param.Event(label='Remove selected doodle(s)', doc='Button to remove the selected doodle(s)')
+
     clear_all = param.Event(label='Clear doodles', doc='Button to clear all the doodles')
 
     # Internal parameter
@@ -150,12 +152,15 @@ class DoodleDrawer(pn.viewable.Viewer):
 
             self.class_toggle_group.param.watch(link, 'active')
 
-        # Pipe used to initialize the draw plot and clear it in ._accumulate_drawn_lines()
+        _shared_plot_opts = {
+            'selected': [], 'selection_line_color': '#000000',
+            'selection_line_width': 5, 'nonselection_alpha': 1
+        }
+        
+        # Pipe used to initialize the draw plot, clear it in ._accumulate_drawn_lines(), and update it in ._remove_doodles().
         self._draw_pipe = hv.streams.Pipe(data=[])
         # The DynamicMap reacts to the parameters change to draw lines with the desired style.
-        self._draw = hv.DynamicMap(self._clear_draw_cb, streams=[self._draw_pipe]).apply.opts(
-            color=self.param.line_color, line_width=self.param.line_width
-        ).opts(active_tools=['freehand_draw'])
+        self._draw = hv.DynamicMap(self._update_draw_cb, streams=[self._draw_pipe]).opts(active_tools=['freehand_draw'], **(_shared_plot_opts))
         # Create a FreeHandDraw linked stream and attach it to the DynamicMap/
         # The DynamicMap plot is going to serve as a support for the draw tool,
         # and the data is going to be saved in the stream (see .element or .data).
@@ -166,7 +171,7 @@ class DoodleDrawer(pn.viewable.Viewer):
         self._drawn_pipe = hv.streams.Pipe()
         self._drawn = hv.DynamicMap(self._drawn_cb, streams=[self._drawn_pipe]).apply.opts(
             color='line_color', line_width='line_width'
-        )
+        ).opts(tools=['tap'], **(_shared_plot_opts))
 
         # Set the ._accumulate_drawn_lines() callback on parameter changes to gather
         # the lines previously drawn.
@@ -174,16 +179,37 @@ class DoodleDrawer(pn.viewable.Viewer):
 
         # Store the previous label class, this is used in ._accumulate_drawn_lines
         self._prev_label_class = self.label_class
+        
+        # Create a custom widget (allows dynamically setting disabled and loading properties) for the remove_doodles parameter.
+        self._remove_doodles_button = pn.widgets.Button.from_param(
+            parameter=self.param.remove_doodles,
+            name='Remove selected doodle(s)',
+            button_type='default', disabled=True, loading=False
+        )
+        # For each DynamicMap containing doodles, create a Selection1D linked stream
+        # and attach it to the DynamicMap to see if at least one doodle was selected.
+        self._draw_selection_stream = hv.streams.Selection1D(source=self._draw)
+        self._drawn_selection_stream = hv.streams.Selection1D(source=self._drawn)
+        # Add a subscriber that enables/disables the ability to remove doodles depending on whether a doodle was selected.
+        self._draw_selection_stream.add_subscriber(self._set_remove_doodles_ability)
+        self._drawn_selection_stream.add_subscriber(self._set_remove_doodles_ability)
+
+        # Create a custom widget (allows dynamically setting loading property) for the clear_all parameter.
+        self._clear_all_doodles_button = pn.widgets.Button.from_param(
+            parameter=self.param.clear_all,
+            name='Clear doodles',
+            button_type='default', loading=False
+        )
 
     @param.depends('label_class', watch=True)
     def _update_color(self):
         self.line_color = self.class_color_mapping[self.label_class]
 
-    def _clear_draw_cb(self, data: List):
-        """Clear the lines drawn in a session.
+    @param.depends('line_color', 'line_width', watch=True)
+    def _update_draw_cb(self, data: Optional[List] = []):
+        """Update the lines drawn in a session.
         """
-        # data is always []
-        return hv.Contours(data)
+        return hv.Contours(data).opts(color=self.line_color, line_width=self.line_width)
 
     def _drawn_cb(self, data: Optional[List[pd.DataFrame]]):
         """Plot all the lines previously drawn.
@@ -207,7 +233,7 @@ class DoodleDrawer(pn.viewable.Viewer):
                 if event:
                     df_line[ppt] = event.old if event.name == ppt else getattr(self, ppt)
                 else:
-                    # New event means that we want the current properties.
+                    # No event means that we want the current properties.
                     df_line[ppt] = getattr(self, ppt)
             df_line['label_class'] = self._prev_label_class
         self._accumulated_lines.extend(lines)
@@ -217,12 +243,46 @@ class DoodleDrawer(pn.viewable.Viewer):
         self._draw_stream.event(data={})
         # Plot all the lines drawn at this stage by sending them through this Pipe
         self._drawn_pipe.event(data=self._accumulated_lines)
-
         self._prev_label_class = self.label_class
 
+    def _set_remove_doodles_ability(self, index: Optional[List[int]] = []):
+        """Enables/disables the button for removing doodles depending on whether doodles are selected.
+        """
+        # Enable the remove_doodles button if at least one doodle is selected.
+        if self._draw_selection_stream.index or self._drawn_selection_stream.index:
+            self._remove_doodles_button.disabled = False
+        # Else disable the button if no doodles are selected.
+        else:
+            self._remove_doodles_button.disabled = True
+
+    @param.depends('remove_doodles', watch=True)
+    def _remove_doodles(self):
+        """Removes any selected doodles when the button for removing doodles is enabled and clicked.
+        """
+        # If the user is allowed to remove selected doodles (button is enabled)...
+        if not self._remove_doodles_button.disabled:
+            with pn.param.set_values(self._remove_doodles_button, loading=True):
+                if self._draw_selection_stream.index:
+                    # Remove the selected doodle(s) from the draw stream.
+                    remaining_doodles_data = self._draw_stream.data.copy()
+                    for col, all_doodles_vals in remaining_doodles_data.items():
+                        remaining_doodles_data[col] = [one_doodle_vals for i, one_doodle_vals in enumerate(all_doodles_vals) if i not in self._draw_selection_stream.index]
+                    self._draw_stream.event(data=remaining_doodles_data)
+                    # Plot the non-removed doodles by sending the draw pipe the modified list of dataframes.
+                    remaining_doodles_dataframes = [element.dframe() for element in self._draw_stream.element.split()]
+                    self._draw_pipe.event(data=remaining_doodles_dataframes)
+                if self._drawn_selection_stream.index:
+                    # Remove the dataframe that corresponds to each selected drawn doodle.
+                    self._accumulated_lines = [doodle for i, doodle in enumerate(self._accumulated_lines) if i not in self._drawn_selection_stream.index]
+                    # Plot the non-removed drawn doodles by sending the drawn pipe the modified list of dataframes.
+                    self._drawn_pipe.event(data=self._accumulated_lines)
+                # Disable the button once the doodles are removed and no doodles are selected.
+                self._remove_doodles_button.disabled = True
+    
     @param.depends('clear_all', watch=True)
     def _update_clear(self):
-        self.clear()
+        with pn.param.set_values(self._clear_all_doodles_button, loading=True):
+            self.clear()
 
     def clear(self):
         self._accumulated_lines = []
@@ -247,6 +307,14 @@ class DoodleDrawer(pn.viewable.Viewer):
     @property
     def colormap(self):
         return list(self.class_color_mapping.values())
+
+    @property
+    def remove_doodles_button(self):
+        return self._remove_doodles_button
+
+    @property
+    def clear_all_doodles_button(self):
+        return self._clear_all_doodles_button
 
     @property
     def plot(self):
@@ -470,7 +538,14 @@ class Info(pn.viewable.Viewer):
 
     def __init__(self):
         super().__init__()
-        self._pane = pn.pane.Alert(min_height=150, sizing_mode='stretch_both')
+        self._toolbar_instructions = ''.join([
+            'To select doodles, click the **Tap tool** <img src="https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/TapTool.png" alt="Tap tool" width="16"/> next to the image.',
+            '<ul><li>Click on a doodle to select it, and click on an empty image area to unselect.</li>',
+            '<li>Hold down the SHIFT key while clicking to select more than one doodle.</li>',
+            '<li>The "Remove selected doodle(s)" button only works when at least one doodle is selected.</li></ul>',
+            'To draw doodles, click the **Freehand Draw tool** <img src="https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/FreehandDrawTool.png" alt="Freehand Draw tool" width="16"/> next to the image.'
+        ])
+        self._pane = pn.pane.Alert(object=self._toolbar_instructions, min_height=150, sizing_mode='stretch_both')
 
     def update(self, msg, msg_type='primary'):
         logger.info(msg)
@@ -482,7 +557,7 @@ class Info(pn.viewable.Viewer):
         self._pane.object += f'<br>{msg}'
 
     def reset(self):
-        self._pane.object = ''
+        self._pane.object = self._toolbar_instructions
         self._pane.alert_type = 'primary'
 
     def __panel__(self):
@@ -532,8 +607,10 @@ class Application(param.Parameterized):
         self._img_pane = pn.pane.HoloViews(sizing_mode='scale_height')
         super().__init__(**params)
 
-    def _init_img_pane(self):
-        self._img_pane.object = (self.input_image.plot * self.doodle_drawer.plot).opts(responsive='height')
+    @param.depends('doodle_drawer.clear_all', watch=True)
+    def _update_img_pane(self):
+        with pn.param.set_values(self._img_pane, loading=True):
+            self._img_pane.object = (self.input_image.plot * self.doodle_drawer.plot).opts(responsive='height')
 
     @param.depends('input_image.location', watch=True)
     def _reset(self):
@@ -549,7 +626,7 @@ class Application(param.Parameterized):
 
     @param.depends('clear_segmentation', watch=True, on_init=True)
     def _clear_segmentation(self):
-        self._init_img_pane()
+        self._update_img_pane()
         self._init_segmentation_output()
 
     @param.depends('compute_segmentation', watch=True)
@@ -640,7 +717,7 @@ class Application(param.Parameterized):
             duration = round(time.time() - start_time, 1)
             self.info.add(f'Process done in {duration}s.')
 
-    def save_output_file(self, data, location, input_file_format, num_bands=1, file_options=[]):
+    def _save_output_file(self, data, location, input_file_format, num_bands=1, file_options=[]):
         if input_file_format in ('.tif', '.tiff'):
             # Create a TIFF output file with georeferencing information (if the file is a GeoTIFF).
             rows, cols = data.shape[0], data.shape[1]
@@ -698,7 +775,7 @@ class Application(param.Parameterized):
         # doodles = 1-band 8-bit integer (greyscale) version of the user's doodles
         doodles_name = input_name + '_doodles' + input_file_format
         doodles_file = res_dir / doodles_name
-        self.save_output_file(
+        self._save_output_file(
             self._mask_doodles,
             doodles_file,
             input_file_format
@@ -706,7 +783,7 @@ class Application(param.Parameterized):
         # grayscale segmentation = 1-band 8-bit integer (greyscale) version of the Doodler output, before it gets colorized
         grayscale_segmentation_name = input_name + '_label' + input_file_format
         grayscale_segmentation_file = res_dir / grayscale_segmentation_name
-        self.save_output_file(
+        self._save_output_file(
             self._segmentation,
             grayscale_segmentation_file,
             input_file_format
@@ -714,7 +791,7 @@ class Application(param.Parameterized):
         # colorized segmentation = multi-band 8-bit integer (RGBA) version of the Doodler output with colors
         colorized_segmentation_name = input_name + '_colorlabel' + input_file_format
         colorized_segmentation_file = res_dir / colorized_segmentation_name
-        self.save_output_file(
+        self._save_output_file(
             self._segmentation_color,
             colorized_segmentation_file,
             input_file_format,
