@@ -48,11 +48,12 @@ panel serve doodler_nb.ipynb
 ```
 
 ## Using Tools
-Instructions on how to use the tools are provided at the bottom left of the application.
-![Tools_Instructions](https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/Tools_Instructions.jpg)
-The Tap tool is for selecting doodles, and the Freehand Draw tool is for drawing doodles. All available tools are to the right of the input image.
-![All_Tools](https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/All_Tools.jpg)
-Here is a demo of how to use the tools:
+Instructions on how to use the tools are provided at the bottom left of the application.\
+![Tools_Instructions](https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/Tools_Instructions.jpg)\
+The Tap tool is for selecting doodles, and the Freehand Draw tool is for drawing doodles. All available tools are to the right of the input image.\
+![All_Tools](https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/All_Tools.jpg)\
+Here is a demo of how to use the tools:\
+![Tools_Demo](https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/Tools_Demo.gif)\
 **Tip: If you used the Tap tool to select doodles for removal, make sure to reactivate the Freehand Draw tool afterwards to continue doodling.** Active tools are marked with a blue border on the left side.
 
 ## Video (not up to date)

@@ -249,9 +249,11 @@ class DoodleDrawer(pn.viewable.Viewer):
         """Enables/disables the button for removing doodles depending on whether doodles are selected.
         """
         # Enable the remove_doodles button if at least one doodle is selected.
-        if index: self._remove_doodles_button.disabled = False
+        if self._draw_selection_stream.index or self._drawn_selection_stream.index:
+            self._remove_doodles_button.disabled = False
         # Else disable the button if no doodles are selected.
-        else: self._remove_doodles_button.disabled = True
+        else:
+            self._remove_doodles_button.disabled = True
 
     @param.depends('remove_doodles', watch=True)
     def _remove_doodles(self):
