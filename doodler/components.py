@@ -408,13 +408,13 @@ class InputImage(param.Parameterized):
         if not self.location:
             self._plot = self._pane.object = hv.RGB(data=[])
             return
-        self.array = array = self.read_from_fs(self.location)
+        array = self.read_from_fs(self.location)
         
-        # this is where we want to split the image array used for doodling
-        # and the n-band array for segmentation
-        if np.ndim(array) <=2:
+        # Create image with 3 bands for images with 2 or less bands.
+        if np.ndim(array) <= 2:
             array = np.dstack((array,array,array))
         
+        # Split the image array used for doodling and the n-band array for segmentation.
         h, w, nbands = array.shape
         if nbands > 3:
             img = array[:, :, 0:3].copy()
@@ -424,12 +424,21 @@ class InputImage(param.Parameterized):
         # Make sure image array is within the range
         # [0, 255] for integers or [0, 1] for floats.
         if np.issubdtype(img.dtype, np.integer) and not (np.all(img >= 0) and np.all(img <= 255)):
-            img = (img / np.amax(img) * 255).astype(np.uint8)
+            min_pixel_val, max_pixel_val = np.min(img), np.max(img)
+            img = (np.rint(((img - min_pixel_val) / (max_pixel_val - min_pixel_val)) * 255)).astype(int)
         elif np.issubdtype(img.dtype, np.floating) and not (np.all(img >= 0) and np.all(img <= 1)):
-            img = img / np.amax(img)
-            img[img == float("-inf")] = 0
+            # Infinity can only be represented as a float as of right now,
+            # so we don't need the following two lines for scaling integers.
+            img[img == float("-inf")] = float(0)
+            img[img == float("inf")] = float(1)
+            # Get the minimum and maximim pixel values after removing the +/- infinity values.
+            min_pixel_val, max_pixel_val = np.min(img), np.max(img)
+            img = (img - min_pixel_val) / (max_pixel_val - min_pixel_val)
+        
+        # Set self.array after its pixel values have been scaled to the expected range.
+        self.array = img
 
-        # Preserve the aspect ratio
+        # Preserve the aspect ratio.
         self.img_bounds = (0, 0, w, h)
         self._plot = self._pane.object = hv.RGB(
             img, bounds=self.img_bounds
