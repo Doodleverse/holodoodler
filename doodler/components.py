@@ -548,11 +548,11 @@ class Info(pn.viewable.Viewer):
     def __init__(self):
         super().__init__()
         self._toolbar_instructions = ''.join([
-            'To select doodles, click the **Tap tool** <img src="https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/TapTool.png" alt="Tap tool" width="16"/> next to the image.',
+            'To select doodles, click the **Tap tool** <img src="https://raw.githubusercontent.com/Doodleverse/holodoodler/master/assets/TapTool.png" alt="Tap tool" width="16"/> next to the image.',
             '<ul><li>Click on a doodle to select it, and click on an empty image area to unselect.</li>',
             '<li>Hold down the SHIFT key while clicking to select more than one doodle.</li>',
             '<li>The "Remove selected doodle(s)" button only works when at least one doodle is selected.</li></ul>',
-            'To draw doodles, click the **Freehand Draw tool** <img src="https://raw.githubusercontent.com/venuswku/holodoodler/modify-doodles/assets/FreehandDrawTool.png" alt="Freehand Draw tool" width="16"/> next to the image.'
+            'To draw doodles, click the **Freehand Draw tool** <img src="https://raw.githubusercontent.com/Doodleverse/holodoodler/master/assets/FreehandDrawTool.png" alt="Freehand Draw tool" width="16"/> next to the image.'
         ])
         self._pane = pn.pane.Alert(object=self._toolbar_instructions, min_height=150, sizing_mode='stretch_both')
 
@@ -757,7 +757,7 @@ class Application(param.Parameterized):
             output_dataset = None
             input_dataset = None
         else:
-            # Create a PNG output file.
+            # Create a JPEG output file.
             imageio.imwrite(location, data)
 
     @param.depends('save_segmentation', watch=True)
@@ -780,7 +780,6 @@ class Application(param.Parameterized):
         input_file = os.path.basename(self.input_image.location)
         input_name, ext = os.path.splitext(input_file)
         input_file_format = ext.lower()
-        if input_file_format in ('.jpg', '.jpeg'): input_file_format = '.png'
         # doodles = 1-band 8-bit integer (greyscale) version of the user's doodles
         doodles_name = input_name + '_doodles' + input_file_format
         doodles_file = res_dir / doodles_name
@@ -793,19 +792,19 @@ class Application(param.Parameterized):
         grayscale_segmentation_name = input_name + '_label' + input_file_format
         grayscale_segmentation_file = res_dir / grayscale_segmentation_name
         self._save_output_file(
-            self._segmentation,
+            self._segmentation.astype(np.uint8),
             grayscale_segmentation_file,
             input_file_format
         )
-        # colorized segmentation = multi-band 8-bit integer (RGBA) version of the Doodler output with colors
+        # colorized segmentation = multi-band 8-bit integer (RGB) version of the Doodler output with colors
         colorized_segmentation_name = input_name + '_colorlabel' + input_file_format
         colorized_segmentation_file = res_dir / colorized_segmentation_name
         self._save_output_file(
-            self._segmentation_color,
+            self._segmentation_color[:,:,:3],
             colorized_segmentation_file,
             input_file_format,
-            num_bands = self._segmentation_color.shape[2],
-            file_options = ['PHOTOMETRIC=RGB', 'ALPHA=YES']
+            num_bands = 3,
+            file_options = ['PHOTOMETRIC=RGB']
         )
 
         content = {}
